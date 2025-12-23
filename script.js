@@ -21,8 +21,8 @@ let isProcessingFace = false;
 
 /* --- Gesture State --- */
 let lastGestureTime = 0;
-const GESTURE_COOLDOWN = 800; // ms between swipes
-let previousHandX = null;     // To track movement
+const GESTURE_COOLDOWN = 800; 
+let previousHandX = null;     
 
 /* --- Try All / Gallery State --- */
 let autoTryRunning = false;
@@ -55,7 +55,7 @@ function updateHandIndicator(detected) {
   } else {
     indicatorDot.style.background = "#555"; 
     indicatorText.textContent = "Show Hand to Control";
-    previousHandX = null; // Reset tracking if hand is lost
+    previousHandX = null; 
   }
 }
 
@@ -85,40 +85,31 @@ hands.onResults((results) => {
 
   if (!hasHand || autoTryRunning) return;
 
-  // Gesture Logic
   const now = Date.now();
   if (now - lastGestureTime < GESTURE_COOLDOWN) return;
 
   const landmarks = results.multiHandLandmarks[0];
-  const indexTip = landmarks[8]; // Index finger tip
-  const currentX = indexTip.x;   // 0.0 (left) to 1.0 (right)
+  const indexTip = landmarks[8]; 
+  const currentX = indexTip.x;   
 
-  // We need a previous frame to compare movement
   if (previousHandX !== null) {
       const diff = currentX - previousHandX;
-      
-      // Threshold: How fast/far you moved since last frame
-      // Negative diff = Moving Right (in mirrored selfie view usually)
-      // Positive diff = Moving Left
       const SWIPE_THRESHOLD = 0.04; 
 
       if (diff < -SWIPE_THRESHOLD) { 
-        // Swiped Right (Next)
         navigateJewelry(1);
         lastGestureTime = now;
         flashIndicator("#d4af37");
-        previousHandX = null; // Reset to require new motion
+        previousHandX = null; 
       } 
       else if (diff > SWIPE_THRESHOLD) { 
-        // Swiped Left (Previous)
         navigateJewelry(-1);
         lastGestureTime = now;
         flashIndicator("#d4af37");
-        previousHandX = null; // Reset to require new motion
+        previousHandX = null; 
       }
   }
 
-  // Update history only if we didn't just trigger
   if (now - lastGestureTime > 100) {
       previousHandX = currentX;
   }
@@ -139,25 +130,19 @@ faceMesh.onResults((results) => {
   canvasCtx.save();
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
   
-  // Mirror the video to make it feel natural
+  // Mirror logic
   canvasCtx.translate(canvasElement.width, 0);
   canvasCtx.scale(-1, 1);
   canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
   
-  // Flip back for drawing jewelry correctly if needed, or calculate landmarks mirrored
-  // Note: MediaPipe landmarks are normalized. 
-  // Let's stick to standard drawing but ensure ears are correct side.
-
   if (results.multiFaceLandmarks && results.multiFaceLandmarks[0]) {
     const lm = results.multiFaceLandmarks[0];
     
-    // Landmarks
     const leftEar = { x: lm[132].x * canvasElement.width, y: lm[132].y * canvasElement.height };
     const rightEar = { x: lm[361].x * canvasElement.width, y: lm[361].y * canvasElement.height };
     const neck = { x: lm[152].x * canvasElement.width, y: lm[152].y * canvasElement.height };
     const earDist = Math.hypot(rightEar.x - leftEar.x, rightEar.y - leftEar.y);
 
-    // Render Earrings
     if (earringImg && earringImg.complete) {
       let ew = earDist * 0.25;
       let eh = (earringImg.height/earringImg.width) * ew;
@@ -165,7 +150,6 @@ faceMesh.onResults((results) => {
       canvasCtx.drawImage(earringImg, rightEar.x - ew/2, rightEar.y, ew, eh);
     }
     
-    // Render Necklace
     if (necklaceImg && necklaceImg.complete) {
       let nw = earDist * 1.2;
       let nh = (necklaceImg.height/necklaceImg.width) * nw;
@@ -275,12 +259,10 @@ async function runAutoStep() {
     return;
   }
 
-  // Set current jewelry
   const targetImg = assets[autoTryIndex];
   if (currentType.includes('earrings')) earringImg = targetImg;
   else necklaceImg = targetImg;
 
-  // Wait for AR positioning to settle, then snap
   autoTryTimeout = setTimeout(() => {
     captureToGallery();
     autoTryIndex++;
@@ -292,7 +274,6 @@ function captureToGallery() {
   const dataUrl = canvasElement.toDataURL('image/png');
   autoSnapshots.push(dataUrl);
   
-  // Flash Effect
   const flash = document.getElementById('flash-overlay');
   if(flash) {
     flash.classList.add('active');
@@ -300,7 +281,12 @@ function captureToGallery() {
   }
 }
 
-/* ---------- GALLERY & LIGHTBOX (ZOOM) ---------- */
+function takeSnapshot() {
+    captureToGallery();
+    showGallery();
+}
+
+/* ---------- GALLERY & LIGHTBOX (ZOOM WITH STRIP) ---------- */
 function showGallery() {
   const modal = document.getElementById('gallery-modal');
   const grid = document.getElementById('gallery-grid');
@@ -308,7 +294,6 @@ function showGallery() {
 
   grid.innerHTML = '';
   
-  // Create Thumbnails
   autoSnapshots.forEach((src, index) => {
     const wrapper = document.createElement('div');
     wrapper.className = "gallery-item-wrapper";
@@ -317,8 +302,8 @@ function showGallery() {
     img.src = src;
     img.className = "gallery-thumb";
     
-    // Add Click listener for Lightbox Zoom
-    img.onclick = () => openLightbox(src);
+    // Pass INDEX so we know position
+    img.onclick = () => openLightbox(index);
     
     wrapper.appendChild(img);
     grid.appendChild(wrapper);
@@ -327,11 +312,34 @@ function showGallery() {
   modal.style.display = 'flex';
 }
 
-function openLightbox(src) {
+function openLightbox(selectedIndex) {
     const lightbox = document.getElementById('lightbox-overlay');
     const lightboxImg = document.getElementById('lightbox-image');
+    const strip = document.getElementById('lightbox-thumbs');
     
-    lightboxImg.src = src;
+    // 1. Show main image
+    lightboxImg.src = autoSnapshots[selectedIndex];
+    
+    // 2. Generate Strip
+    strip.innerHTML = ''; // Clear old thumbs
+    
+    autoSnapshots.forEach((src, idx) => {
+        const thumb = document.createElement('img');
+        thumb.src = src;
+        thumb.className = "strip-thumb";
+        if(idx === selectedIndex) thumb.classList.add('active');
+        
+        // Click strip thumb to switch main image
+        thumb.onclick = () => {
+            lightboxImg.src = src;
+            // Update active styling
+            document.querySelectorAll('.strip-thumb').forEach(t => t.classList.remove('active'));
+            thumb.classList.add('active');
+        };
+        
+        strip.appendChild(thumb);
+    });
+
     lightbox.style.display = 'flex';
 }
 
@@ -350,3 +358,4 @@ window.selectJewelryType = selectJewelryType;
 window.toggleTryAll = toggleTryAll;
 window.closeGallery = closeGallery;
 window.closeLightbox = closeLightbox;
+window.takeSnapshot = takeSnapshot;

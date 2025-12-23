@@ -58,20 +58,26 @@
       <div class="gallery-content">
         <span class="close-gallery" onclick="closeGallery()" aria-label="Close Gallery">&times;</span>
         <h2 id="gallery-title" style="font-family: 'Playfair Display'; color: #d4af37;">Your Collection</h2>
-        <div class="gallery-subtitle">Tap an image to zoom</div>
+        <div class="gallery-subtitle">Tap an image to view details</div>
         
         <div id="gallery-grid"></div>
         
         <div style="margin-top: 20px;">
           <button class="pill accent" onclick="window.print()">Download as PDF</button>
-          <button class="pill" onclick="closeGallery()" style="margin-left: 10px;">Continue Browsing</button>
+          <button class="pill" onclick="closeGallery()" style="margin-left: 10px;">Back to Camera</button>
         </div>
       </div>
     </div>
 
-    <div id="lightbox-overlay" onclick="closeLightbox()">
-        <span class="close-lightbox">&times;</span>
-        <img id="lightbox-image" src="" alt="Zoomed View">
+    <div id="lightbox-overlay">
+        <span class="close-lightbox" onclick="closeLightbox()">&times;</span>
+        
+        <div class="lightbox-main">
+            <img id="lightbox-image" src="" alt="Zoomed View">
+        </div>
+        
+        <div class="lightbox-strip" id="lightbox-thumbs">
+            </div>
     </div>
 
     <div id="flash-overlay"></div>
