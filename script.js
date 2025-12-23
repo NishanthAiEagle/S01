@@ -16,10 +16,13 @@ const indicatorText = document.getElementById('indicator-text');
 
 /* App State */
 let earringImg = null, necklaceImg = null, currentType = '';
-let lastGestureTime = 0;
-const GESTURE_COOLDOWN = 800; // Increased slightly to prevent double-skips
 let isProcessingHand = false;
 let isProcessingFace = false;
+
+/* --- Gesture State --- */
+let lastGestureTime = 0;
+const GESTURE_COOLDOWN = 800; // ms between swipes
+let previousHandX = null;     // To track movement
 
 /* --- Try All / Gallery State --- */
 let autoTryRunning = false;
@@ -48,22 +51,22 @@ async function preloadCategory(type) {
 function updateHandIndicator(detected) {
   if (detected) {
     indicatorDot.style.background = "#00ff88"; 
-    indicatorText.textContent = "Gesture Active";
+    indicatorText.textContent = "Hand Detected - Swipe to Browse";
   } else {
     indicatorDot.style.background = "#555"; 
-    indicatorText.textContent = "Hand Not Detected";
+    indicatorText.textContent = "Show Hand to Control";
+    previousHandX = null; // Reset tracking if hand is lost
   }
 }
 
 function flashIndicator(color) {
     indicatorDot.style.background = color;
     setTimeout(() => { 
-        if(indicatorText.textContent === "Gesture Active") indicatorDot.style.background = "#00ff88";
-        else indicatorDot.style.background = "#555";
+        indicatorDot.style.background = "#00ff88";
     }, 300);
 }
 
-/* ---------- HAND DETECTION (FIXED) ---------- */
+/* ---------- HAND DETECTION (SWIPE LOGIC) ---------- */
 const hands = new Hands({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
 });
@@ -80,48 +83,44 @@ hands.onResults((results) => {
   const hasHand = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
   updateHandIndicator(hasHand);
 
-  if (!hasHand || autoTryRunning) return; 
+  if (!hasHand || autoTryRunning) return;
 
+  // Gesture Logic
   const now = Date.now();
   if (now - lastGestureTime < GESTURE_COOLDOWN) return;
 
   const landmarks = results.multiHandLandmarks[0];
-  
-  // Landmarks: 8 = Index Tip, 5 = Index Knuckle, 0 = Wrist, 9 = Middle Finger Knuckle
-  const indexTip = landmarks[8];
-  const indexKnuckle = landmarks[5]; 
-  const wrist = landmarks[0];
-  const middleKnuckle = landmarks[9];
+  const indexTip = landmarks[8]; // Index finger tip
+  const currentX = indexTip.x;   // 0.0 (left) to 1.0 (right)
 
-  // 1. Calculate Hand Scale (Distance from Wrist to Middle Knuckle)
-  // This helps us understand how big the hand is in the frame
-  const handSize = Math.hypot(middleKnuckle.x - wrist.x, middleKnuckle.y - wrist.y);
+  // We need a previous frame to compare movement
+  if (previousHandX !== null) {
+      const diff = currentX - previousHandX;
+      
+      // Threshold: How fast/far you moved since last frame
+      // Negative diff = Moving Right (in mirrored selfie view usually)
+      // Positive diff = Moving Left
+      const SWIPE_THRESHOLD = 0.04; 
 
-  // 2. Calculate Pointer Direction relative to hand size
-  const horizontalDiff = (indexTip.x - indexKnuckle.x);
-  const verticalDiff = (indexTip.y - indexKnuckle.y);
+      if (diff < -SWIPE_THRESHOLD) { 
+        // Swiped Right (Next)
+        navigateJewelry(1);
+        lastGestureTime = now;
+        flashIndicator("#d4af37");
+        previousHandX = null; // Reset to require new motion
+      } 
+      else if (diff > SWIPE_THRESHOLD) { 
+        // Swiped Left (Previous)
+        navigateJewelry(-1);
+        lastGestureTime = now;
+        flashIndicator("#d4af37");
+        previousHandX = null; // Reset to require new motion
+      }
+  }
 
-  // Threshold is relative to hand size (e.g., finger must extend 40% of palm size)
-  const threshold = handSize * 0.4; 
-
-  // 3. Strict Horizontal Check (Ignore if pointing Up/Down)
-  const isHorizontal = Math.abs(verticalDiff) < threshold;
-
-  if (isHorizontal) {
-    if (horizontalDiff > threshold) { 
-      // Pointing RIGHT (Screen Right) -> Next
-      console.log("Gesture: NEXT");
-      navigateJewelry(1);
-      lastGestureTime = now;
-      flashIndicator("#d4af37");
-    } 
-    else if (horizontalDiff < -threshold) { 
-      // Pointing LEFT (Screen Left) -> Previous
-      console.log("Gesture: PREV");
-      navigateJewelry(-1);
-      lastGestureTime = now;
-      flashIndicator("#d4af37");
-    }
+  // Update history only if we didn't just trigger
+  if (now - lastGestureTime > 100) {
+      previousHandX = currentX;
   }
 });
 
@@ -140,34 +139,30 @@ faceMesh.onResults((results) => {
   canvasCtx.save();
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
   
-  // Draw video first
+  // Mirror the video to make it feel natural
   canvasCtx.translate(canvasElement.width, 0);
-  canvasCtx.scale(-1, 1); // Mirror video
+  canvasCtx.scale(-1, 1);
   canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
-  canvasCtx.setTransform(1, 0, 0, 1, 0, 0); // Reset for drawing jewelry
+  
+  // Flip back for drawing jewelry correctly if needed, or calculate landmarks mirrored
+  // Note: MediaPipe landmarks are normalized. 
+  // Let's stick to standard drawing but ensure ears are correct side.
 
   if (results.multiFaceLandmarks && results.multiFaceLandmarks[0]) {
     const lm = results.multiFaceLandmarks[0];
     
-    // We must mirror landmarks manually because we mirrored the video draw
-    const getX = (x) => (1 - x) * canvasElement.width;
-    const getY = (y) => y * canvasElement.height;
-
-    // Key landmarks for placement
-    const leftEar = { x: getX(lm[132].x), y: getY(lm[132].y) };
-    const rightEar = { x: getX(lm[361].x), y: getY(lm[361].y) };
-    const neck = { x: getX(lm[152].x), y: getY(lm[152].y) };
-    
-    // Adjust distance calc for mirrored coords
+    // Landmarks
+    const leftEar = { x: lm[132].x * canvasElement.width, y: lm[132].y * canvasElement.height };
+    const rightEar = { x: lm[361].x * canvasElement.width, y: lm[361].y * canvasElement.height };
+    const neck = { x: lm[152].x * canvasElement.width, y: lm[152].y * canvasElement.height };
     const earDist = Math.hypot(rightEar.x - leftEar.x, rightEar.y - leftEar.y);
 
     // Render Earrings
     if (earringImg && earringImg.complete) {
       let ew = earDist * 0.25;
       let eh = (earringImg.height/earringImg.width) * ew;
-      // Flip left/right ears visually due to mirror
-      canvasCtx.drawImage(earringImg, rightEar.x - ew/2, rightEar.y, ew, eh);
       canvasCtx.drawImage(earringImg, leftEar.x - ew/2, leftEar.y, ew, eh);
+      canvasCtx.drawImage(earringImg, rightEar.x - ew/2, rightEar.y, ew, eh);
     }
     
     // Render Necklace
@@ -184,7 +179,6 @@ faceMesh.onResults((results) => {
 async function init() {
   const camera = new Camera(videoElement, {
     onFrame: async () => {
-      // Throttle to prevent lagging
       if (!isProcessingFace) { isProcessingFace = true; await faceMesh.send({image: videoElement}); }
       if (!isProcessingHand) { isProcessingHand = true; await hands.send({image: videoElement}); }
     },
@@ -200,14 +194,12 @@ function navigateJewelry(dir) {
   const list = preloadedAssets[currentType];
   let currentImg = currentType.includes('earrings') ? earringImg : necklaceImg;
   
-  // Find index or default to 0
   let idx = list.indexOf(currentImg);
-  if (idx === -1) idx = 0;
-
   let nextIdx = (idx + dir + list.length) % list.length;
   
-  if (currentType.includes('earrings')) earringImg = list[nextIdx];
-  else necklaceImg = list[nextIdx];
+  const nextItem = list[nextIdx];
+  if (currentType.includes('earrings')) earringImg = nextItem;
+  else necklaceImg = nextItem;
 }
 
 function selectJewelryType(type) {
@@ -237,7 +229,7 @@ function toggleCategory(cat) {
   subs.forEach(b => b.style.display = b.innerText.toLowerCase().includes(cat) ? 'inline-block' : 'none');
 }
 
-/* ---------- TRY ALL (SET 2 FEATURE) ---------- */
+/* ---------- TRY ALL (AUTO CAPTURE) ---------- */
 async function toggleTryAll() {
   if (!currentType) {
     alert("Please select a sub-category (e.g. Gold Earrings) first!");
@@ -283,10 +275,12 @@ async function runAutoStep() {
     return;
   }
 
+  // Set current jewelry
   const targetImg = assets[autoTryIndex];
   if (currentType.includes('earrings')) earringImg = targetImg;
   else necklaceImg = targetImg;
 
+  // Wait for AR positioning to settle, then snap
   autoTryTimeout = setTimeout(() => {
     captureToGallery();
     autoTryIndex++;
@@ -298,6 +292,7 @@ function captureToGallery() {
   const dataUrl = canvasElement.toDataURL('image/png');
   autoSnapshots.push(dataUrl);
   
+  // Flash Effect
   const flash = document.getElementById('flash-overlay');
   if(flash) {
     flash.classList.add('active');
@@ -305,29 +300,47 @@ function captureToGallery() {
   }
 }
 
+/* ---------- GALLERY & LIGHTBOX (ZOOM) ---------- */
 function showGallery() {
   const modal = document.getElementById('gallery-modal');
   const grid = document.getElementById('gallery-grid');
   if(!modal || !grid) return;
 
   grid.innerHTML = '';
-  autoSnapshots.forEach(src => {
+  
+  // Create Thumbnails
+  autoSnapshots.forEach((src, index) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = "gallery-item-wrapper";
+    
     const img = document.createElement('img');
     img.src = src;
     img.className = "gallery-thumb";
-    grid.appendChild(img);
+    
+    // Add Click listener for Lightbox Zoom
+    img.onclick = () => openLightbox(src);
+    
+    wrapper.appendChild(img);
+    grid.appendChild(wrapper);
   });
   
   modal.style.display = 'flex';
 }
 
-function closeGallery() {
-  document.getElementById('gallery-modal').style.display = 'none';
+function openLightbox(src) {
+    const lightbox = document.getElementById('lightbox-overlay');
+    const lightboxImg = document.getElementById('lightbox-image');
+    
+    lightboxImg.src = src;
+    lightbox.style.display = 'flex';
 }
 
-function takeSnapshot() {
-    captureToGallery();
-    showGallery();
+function closeLightbox() {
+    document.getElementById('lightbox-overlay').style.display = 'none';
+}
+
+function closeGallery() {
+  document.getElementById('gallery-modal').style.display = 'none';
 }
 
 /* ---------- INITIALIZATION ---------- */
@@ -336,4 +349,4 @@ window.toggleCategory = toggleCategory;
 window.selectJewelryType = selectJewelryType;
 window.toggleTryAll = toggleTryAll;
 window.closeGallery = closeGallery;
-window.takeSnapshot = takeSnapshot;
+window.closeLightbox = closeLightbox;

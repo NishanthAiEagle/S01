@@ -24,6 +24,9 @@ body {
   position: fixed; 
   inset: 0; 
   z-index: 0; 
+  /* Mirror the entire container so it feels like a real mirror */
+  /* transform: scaleX(-1); */ 
+  /* NOTE: We handle mirroring in JS canvas draw now for better control */
 }
 
 #overlay { 
@@ -88,10 +91,10 @@ body {
   margin-left: 10px; 
   cursor: pointer;
   transition: transform 0.2s;
+  color: white;
 }
 
 .action-row button:hover { transform: scale(1.1); background: rgba(255,255,255,0.2); }
-.action-row img { width: 24px; height: 24px; }
 
 /* --- CONTROLS PANEL (BOTTOM) --- */
 .controls-panel {
@@ -110,6 +113,7 @@ body {
   justify-content: center; 
   gap: 12px; 
   margin-bottom: 15px; 
+  flex-wrap: wrap;
 }
 
 .pill, .subpill {
@@ -122,6 +126,7 @@ body {
   cursor: pointer; 
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
+  font-size: 14px;
 }
 
 .pill:hover, .subpill:hover { background: rgba(255,255,255,0.2); border-color: var(--accent); }
@@ -152,10 +157,8 @@ body {
   overflow-x: auto; 
   padding: 15px; 
   justify-content: center;
-  scrollbar-width: none; /* Hide scrollbar Firefox */
+  scrollbar-width: none; 
 }
-
-.carousel-cards::-webkit-scrollbar { display: none; } /* Hide scrollbar Chrome/Safari */
 
 .thumb-btn { 
   height: 70px; 
@@ -171,13 +174,13 @@ body {
 
 .thumb-btn:hover { border-color: var(--accent); transform: translateY(-5px); }
 
-/* --- TRY ALL GALLERY MODAL --- */
+/* --- GALLERY MODAL (GRID) --- */
 #gallery-modal {
   position: fixed; 
   inset: 0; 
   background: rgba(0,0,0,0.95);
   z-index: 1000; 
-  display: none; /* Controlled by JS */
+  display: none; 
   align-items: center; 
   justify-content: center;
   backdrop-filter: blur(10px);
@@ -185,7 +188,7 @@ body {
 
 .gallery-content {
   background: #0f0f0f; 
-  width: 85%; 
+  width: 90%; 
   max-width: 900px;
   max-height: 85vh; 
   border-radius: 24px;
@@ -196,18 +199,32 @@ body {
   text-align: center;
 }
 
+.gallery-subtitle {
+    color: #888;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
 #gallery-grid {
   display: grid; 
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 20px; 
-  margin: 30px 0;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 15px; 
+  margin: 10px 0;
 }
 
 .gallery-thumb { 
   width: 100%; 
-  border-radius: 15px; 
-  border: 1px solid rgba(255,255,255,0.05); 
-  box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 10px; 
+  border: 2px solid rgba(255,255,255,0.1); 
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.gallery-thumb:hover {
+    border-color: var(--accent);
+    transform: scale(1.05);
 }
 
 .close-gallery {
@@ -220,6 +237,34 @@ body {
   line-height: 1;
 }
 
+/* --- LIGHTBOX (ZOOM) --- */
+#lightbox-overlay {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.98);
+    z-index: 2000;
+    display: none; /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+#lightbox-image {
+    max-width: 95%;
+    max-height: 90%;
+    border: 2px solid var(--accent);
+    border-radius: 8px;
+    box-shadow: 0 0 30px rgba(212, 175, 55, 0.3);
+}
+
+.close-lightbox {
+    position: absolute;
+    top: 20px; right: 30px;
+    font-size: 40px;
+    color: white;
+    cursor: pointer;
+}
+
 /* --- FLASH EFFECT --- */
 #flash-overlay {
   position: fixed; 
@@ -227,17 +272,9 @@ body {
   background: #fff; 
   opacity: 0; 
   pointer-events: none; 
-  z-index: 2000;
+  z-index: 3000;
 }
 #flash-overlay.active { 
   opacity: 1; 
   transition: opacity 0.05s; 
-}
-
-/* --- PRINT / EXPORT OPTIMIZATION --- */
-@media print {
-  #app { display: none; }
-  #gallery-modal { display: block; position: static; background: white; }
-  .close-gallery, button { display: none; }
-  .gallery-thumb { break-inside: avoid; margin-bottom: 20px; border: 1px solid #ddd; }
 }
